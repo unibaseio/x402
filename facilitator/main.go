@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -119,6 +120,12 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// GET /health — cheap liveness probe (no capability payload; use /supported
+	// for the full scheme × network list).
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
 	// GET /supported — advertises the schemes, networks, and (optionally) the
 	// receiverAuthorizer address that clients and servers discover at startup.
 	mux.HandleFunc("GET /supported", func(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +146,7 @@ func main() {
 		}
 		result, err := facilitator.Verify(ctx, payload, requirements)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": errorMessage(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -159,13 +166,14 @@ func main() {
 		}
 		result, err := facilitator.Settle(ctx, payload, requirements)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": errorMessage(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
 
 	fmt.Printf("Facilitator listening on http://localhost:%s\n", port)
+	fmt.Println("  GET  /health")
 	fmt.Println("  GET  /supported")
 	fmt.Println("  POST /verify")
 	fmt.Println("  POST /settle")
@@ -173,6 +181,18 @@ func main() {
 		fmt.Printf("Server error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// errorMessage adds a placement hint to the SDK's opaque version-detection
+// error ("invalid version: 0"), which in practice almost always means the
+// caller put x402Version at the top level of the request body instead of
+// inside paymentPayload.
+func errorMessage(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "invalid version: 0") {
+		msg += " (hint: x402Version must be a field inside paymentPayload, not at the top level of the request body)"
+	}
+	return msg
 }
 
 func envOr(key, def string) string {

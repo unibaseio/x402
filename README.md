@@ -151,6 +151,7 @@ batch-settlement); every transition is authorized by the payer's signature.
 
 | Endpoint | Purpose |
 |----------|---------|
+| `GET /health` | Cheap liveness probe (`{"status":"ok"}`). |
 | `GET /supported` | Advertises schemes, networks, and (optional) `receiverAuthorizer`. |
 | `POST /verify` | Off-chain payload validation (signature / balance / channel state). No tx. |
 | `POST /settle` | Submits the onchain tx. |
