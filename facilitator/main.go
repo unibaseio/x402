@@ -155,10 +155,12 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// GET /stats — per network × asset settlement index: onchain tx count and
-	// total settled amount in base units.
+	// GET /stats — per network × asset settlement index (onchain tx count and
+	// total settled amount in base units) plus a per-network rollup in
+	// `summary` (tx count, amount in token units, asset count).
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"networks": stats.snapshot()})
+		snap := stats.snapshot()
+		writeJSON(w, http.StatusOK, map[string]any{"networks": snap, "summary": summarize(snap)})
 	})
 
 	// GET /supported — advertises the schemes, networks, and (optionally) the
