@@ -12,8 +12,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/facilitator .
 # Runtime stage
 FROM alpine:3.20
 # TLS roots for HTTPS RPC endpoints; wget ships with busybox for the healthcheck.
-RUN apk add --no-cache ca-certificates && adduser -D -u 10001 x402
+RUN apk add --no-cache ca-certificates && adduser -D -u 10001 x402 \
+  && mkdir /data && chown x402 /data
 USER x402
+# Settlement stats index (mount a volume at /data to keep it across restarts).
+ENV STATS_FILE=/data/stats.json
 
 COPY --from=build /out/facilitator /usr/local/bin/facilitator
 
