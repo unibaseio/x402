@@ -152,7 +152,7 @@ batch-settlement); every transition is authorized by the payer's signature.
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health` | Cheap liveness probe (`{"status":"ok"}`). |
-| `GET /stats` | Onchain settlement index: per network, tx count + per-asset total amount (base units; symbol/decimals auto-resolved). Live settles are read from their receipts; full history is backfilled from the chain via explorer `txlist` for the facilitator address (`EXPLORER_API_KEY` = Etherscan V2, or `EXPLORER_URL_<NAME>` e.g. Blockscout). Deduped by tx hash, persisted to `STATS_FILE`. |
+| `GET /stats` | Onchain settlement index: per network, tx count + per-asset total amount (base units; symbol/decimals auto-resolved). Live settles are read from their receipts; full history is backfilled from the chain via explorer `txlist` for the facilitator address (`EXPLORER_API_KEY` = Etherscan V2, or `EXPLORER_URL_<NAME>` e.g. Blockscout). Deduped by tx hash, persisted to `STATS_FILE`. Also returns `summary`: per-network tx count, amount in token units, asset count. |
 | `GET /supported` | Advertises schemes, networks, and (optional) `receiverAuthorizer`. |
 | `POST /verify` | Off-chain payload validation (signature / balance / channel state). No tx. |
 | `POST /settle` | Submits the onchain tx. |
