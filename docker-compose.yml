@@ -13,4 +13,9 @@ services:
       # RPC_URL_BASE_SEPOLIA, RPC_URL_BASE, RPC_URL_BSC_TESTNET, RPC_URL_BSC,
       # RPC_URL_POLYGON, RPC_URL_ARBITRUM
       EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY: ${EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY:-}
+    volumes:
+      - facilitator-stats:/data
     restart: unless-stopped
+
+volumes:
+  facilitator-stats:

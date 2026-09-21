@@ -21,6 +21,10 @@ tools/fund-permit2/fund-permit2
 e2e/exact/exact
 e2e/upto/upto
 
+# Foundry build output
+tools/test-token/out/
+tools/test-token/cache/
+
 # Editor
 .DS_Store
 .idea/

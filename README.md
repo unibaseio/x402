@@ -152,6 +152,7 @@ batch-settlement); every transition is authorized by the payer's signature.
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health` | Cheap liveness probe (`{"status":"ok"}`). |
+| `GET /stats` | Settlement index: per network × asset, onchain tx count + total settled amount (base units; symbol/decimals auto-resolved). Persisted to `STATS_FILE` (default `data/stats.json`). |
 | `GET /supported` | Advertises schemes, networks, and (optional) `receiverAuthorizer`. |
 | `POST /verify` | Off-chain payload validation (signature / balance / channel state). No tx. |
 | `POST /settle` | Submits the onchain tx. |
