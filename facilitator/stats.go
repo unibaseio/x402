@@ -23,6 +23,10 @@ type assetTotals struct {
 	Decimals    int    `json:"decimals"`
 	TxCount     uint64 `json:"txCount"`
 	TotalAmount string `json:"totalAmount"` // base units (big.Int decimal string)
+	// Set per request by summarize when a price source is configured and CMC
+	// lists the token; absent otherwise (never fabricated).
+	PriceUsd string `json:"priceUsd,omitempty"`
+	ValueUsd string `json:"valueUsd,omitempty"`
 }
 
 type networkTotals struct {
@@ -145,38 +149,63 @@ func (s *statsStore) snapshot() map[string]*networkTotals {
 }
 
 // Per-network rollup of the snapshot, served next to the per-asset detail so a
-// dashboard can show "BSC: 1,813 settlements" without re-adding the rows.
+// dashboard can show "BSC: 1,814 settlements, $X" without re-adding rows.
 //
 // TxCount is the network's own count (every successful tx the facilitator
 // sent, including claims that move no tokens) — not a sum of per-asset counts,
-// which would double-count multi-token txs. TotalAmount is the sum of every
-// asset's amount in token units (base units / 10^decimals) — a stablecoin-
-// shaped figure only when every asset on the network is USD-pegged. This
-// process has no price feed, so it cannot do better than token units; the
-// per-asset breakdown stays authoritative.
+// which would double-count multi-token txs.
+//
+// TotalUsd only ever sums assets that have a USD quote; a token the price
+// source does not list is reported in UnpricedAssets instead of being counted
+// at face value (a memecoin and a stablecoin are not 1:1). Without a price
+// source, no USD field is emitted at all.
 type networkSummary struct {
-	TxCount     uint64 `json:"txCount"`
-	TotalAmount string `json:"totalAmount"` // token units, decimal string
-	Assets      int    `json:"assets"`
+	TxCount        uint64 `json:"txCount"`
+	Assets         int    `json:"assets"`
+	PricedAssets   int    `json:"pricedAssets"`
+	UnpricedAssets int    `json:"unpricedAssets"`
+	TotalUsd       string `json:"totalUsd,omitempty"`    // sum over priced assets, USD
+	PriceSource    string `json:"priceSource,omitempty"` // "coinmarketcap"
+	PricedAt       string `json:"pricedAt,omitempty"`    // oldest quote used, RFC3339 UTC
 }
 
-func summarize(networks map[string]*networkTotals) map[string]networkSummary {
+// summarize builds the per-network rollup and, when quotes are given,
+// annotates each asset in `networks` with priceUsd / valueUsd. quotes == nil
+// means no price source is configured.
+func summarize(networks map[string]*networkTotals, quotes map[string]usdQuote) map[string]networkSummary {
 	out := make(map[string]networkSummary, len(networks))
 	for net, n := range networks {
 		sum := new(big.Rat)
-		maxDec := 0
-		for _, t := range n.Assets {
+		var oldest time.Time
+		priced := 0
+		for addr, t := range n.Assets {
+			q, ok := quotes[strings.ToLower(addr)]
+			if !ok || q.Price == nil {
+				continue
+			}
 			amt, ok := new(big.Int).SetString(t.TotalAmount, 10)
 			if !ok {
 				continue
 			}
 			den := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.Decimals)), nil)
-			sum.Add(sum, new(big.Rat).SetFrac(amt, den))
-			if t.Decimals > maxDec {
-				maxDec = t.Decimals
+			value := new(big.Rat).Mul(new(big.Rat).SetFrac(amt, den), q.Price)
+			t.PriceUsd = trimDecimal(q.Price.FloatString(8))
+			t.ValueUsd = trimDecimal(value.FloatString(6))
+			sum.Add(sum, value)
+			priced++
+			if oldest.IsZero() || q.At.Before(oldest) {
+				oldest = q.At
 			}
 		}
-		out[net] = networkSummary{TxCount: n.TxCount, TotalAmount: trimDecimal(sum.FloatString(maxDec)), Assets: len(n.Assets)}
+		ns := networkSummary{TxCount: n.TxCount, Assets: len(n.Assets), PricedAssets: priced, UnpricedAssets: len(n.Assets) - priced}
+		if quotes != nil {
+			ns.PriceSource = "coinmarketcap"
+		}
+		if priced > 0 {
+			ns.TotalUsd = trimDecimal(sum.FloatString(6))
+			ns.PricedAt = oldest.UTC().Format(time.RFC3339)
+		}
+		out[net] = ns
 	}
 	return out
 }

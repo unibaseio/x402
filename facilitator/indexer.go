@@ -46,7 +46,7 @@ func indexTx(ctx context.Context, stats *statsStore, metas *tokenMetaCache, sign
 		block = receipt.BlockNumber.Uint64()
 	}
 
-	amounts := map[string]*big.Int{}          // token -> net amount
+	amounts := map[string]*big.Int{}                 // token -> net amount
 	received := map[string]map[common.Address]bool{} // token -> addresses that were a `to`
 	for _, lg := range receipt.Logs {
 		if len(lg.Topics) != 3 || lg.Topics[0] != erc20TransferTopic || len(lg.Data) != 32 {
