@@ -127,6 +127,10 @@ func main() {
 		pricer = newCMCPricer(key, ttl)
 		fmt.Println("Prices: CoinMarketCap (USD totals in /stats)")
 	}
+	pegs := pegQuotes(os.Getenv("PRICE_PEG_USD"))
+	if len(pegs) > 0 {
+		fmt.Printf("Prices: %d asset(s) pegged to $1.00 via PRICE_PEG_USD\n", len(pegs))
+	}
 	facilitator.OnAfterSettle(func(ctx x402.FacilitatorSettleResultContext) error {
 		fmt.Printf("[settle] tx=%s\n", ctx.Result.Transaction)
 		// Index onchain settlements only: batch-settlement vouchers settle with
@@ -167,8 +171,8 @@ func main() {
 
 	// GET /stats — per network × asset settlement index (onchain tx count and
 	// total settled amount in base units) plus a per-network rollup in
-	// `summary`. With CMC_API_KEY set, assets carry priceUsd/valueUsd and the
-	// summary a totalUsd over priced assets. CORS is open: it is public,
+	// `summary`. With CMC_API_KEY and/or PRICE_PEG_USD set, assets carry
+	// priceUsd/valueUsd/priceSource and the summary a totalUsd over priced assets. CORS is open: it is public,
 	// read-only data that dashboards fetch straight from the browser.
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -182,6 +186,14 @@ func main() {
 				}
 			}
 			quotes = pricer.Quotes(r.Context(), addrs)
+		}
+		if len(pegs) > 0 {
+			if quotes == nil {
+				quotes = map[string]usdQuote{}
+			}
+			for a, q := range pegs {
+				quotes[a] = q // a configured peg beats a market quote
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"networks": snap, "summary": summarize(snap, quotes)})
 	})

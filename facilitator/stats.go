@@ -25,8 +25,9 @@ type assetTotals struct {
 	TotalAmount string `json:"totalAmount"` // base units (big.Int decimal string)
 	// Set per request by summarize when a price source is configured and CMC
 	// lists the token; absent otherwise (never fabricated).
-	PriceUsd string `json:"priceUsd,omitempty"`
-	ValueUsd string `json:"valueUsd,omitempty"`
+	PriceUsd    string `json:"priceUsd,omitempty"`
+	ValueUsd    string `json:"valueUsd,omitempty"`
+	PriceSource string `json:"priceSource,omitempty"` // "coinmarketcap" | "peg"
 }
 
 type networkTotals struct {
@@ -165,8 +166,8 @@ type networkSummary struct {
 	PricedAssets   int    `json:"pricedAssets"`
 	UnpricedAssets int    `json:"unpricedAssets"`
 	TotalUsd       string `json:"totalUsd,omitempty"`    // sum over priced assets, USD
-	PriceSource    string `json:"priceSource,omitempty"` // "coinmarketcap"
-	PricedAt       string `json:"pricedAt,omitempty"`    // oldest quote used, RFC3339 UTC
+	PriceSource    string `json:"priceSource,omitempty"` // sources used by priced assets: "coinmarketcap", "peg", or "coinmarketcap+peg"
+	PricedAt       string `json:"pricedAt,omitempty"`    // oldest market quote used, RFC3339 UTC; absent when only pegs priced
 }
 
 // summarize builds the per-network rollup and, when quotes are given,
@@ -178,6 +179,7 @@ func summarize(networks map[string]*networkTotals, quotes map[string]usdQuote) m
 		sum := new(big.Rat)
 		var oldest time.Time
 		priced := 0
+		usedCMC, usedPeg := false, false
 		for addr, t := range n.Assets {
 			q, ok := quotes[strings.ToLower(addr)]
 			if !ok || q.Price == nil {
@@ -191,18 +193,33 @@ func summarize(networks map[string]*networkTotals, quotes map[string]usdQuote) m
 			value := new(big.Rat).Mul(new(big.Rat).SetFrac(amt, den), q.Price)
 			t.PriceUsd = trimDecimal(q.Price.FloatString(8))
 			t.ValueUsd = trimDecimal(value.FloatString(6))
+			t.PriceSource = q.Source
 			sum.Add(sum, value)
 			priced++
-			if oldest.IsZero() || q.At.Before(oldest) {
+			switch q.Source {
+			case "peg":
+				usedPeg = true
+			default:
+				usedCMC = true
+			}
+			// Pegs carry no timestamp; pricedAt reflects market data only.
+			if !q.At.IsZero() && (oldest.IsZero() || q.At.Before(oldest)) {
 				oldest = q.At
 			}
 		}
 		ns := networkSummary{TxCount: n.TxCount, Assets: len(n.Assets), PricedAssets: priced, UnpricedAssets: len(n.Assets) - priced}
-		if quotes != nil {
+		switch {
+		case usedCMC && usedPeg:
+			ns.PriceSource = "coinmarketcap+peg"
+		case usedCMC:
 			ns.PriceSource = "coinmarketcap"
+		case usedPeg:
+			ns.PriceSource = "peg"
 		}
 		if priced > 0 {
 			ns.TotalUsd = trimDecimal(sum.FloatString(6))
+		}
+		if !oldest.IsZero() {
 			ns.PricedAt = oldest.UTC().Format(time.RFC3339)
 		}
 		out[net] = ns
