@@ -13,6 +13,8 @@ services:
       # RPC_URL_BASE_SEPOLIA, RPC_URL_BASE, RPC_URL_BSC_TESTNET, RPC_URL_BSC,
       # RPC_URL_POLYGON, RPC_URL_ARBITRUM
       EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY: ${EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY:-}
+      # Etherscan V2 key: enables /stats history backfill on every chain.
+      EXPLORER_API_KEY: ${EXPLORER_API_KEY:-}
     volumes:
       - facilitator-stats:/data
     restart: unless-stopped

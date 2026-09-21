@@ -12,11 +12,11 @@ import (
 	"time"
 )
 
-// Settlement stats: per network × asset, count of onchain txs and total
-// settled amount in base units. Fed by the OnAfterSettle hook, persisted as
-// one JSON file, served at GET /stats.
-// ponytail: single JSON file + global mutex; move to SQLite if write volume
-// or multi-instance deployment ever demands it.
+// Settlement stats: per network, onchain tx count and per-asset total amount
+// (base units), indexed from tx receipts (see indexer.go). One JSON file,
+// served at GET /stats.
+// ponytail: single JSON file + global mutex + in-file seen-set; move to
+// SQLite if tx volume or multi-instance deployment ever demands it.
 
 type assetTotals struct {
 	Symbol      string `json:"symbol"`
@@ -25,69 +25,121 @@ type assetTotals struct {
 	TotalAmount string `json:"totalAmount"` // base units (big.Int decimal string)
 }
 
+type networkTotals struct {
+	TxCount   uint64                  `json:"txCount"`   // every successful tx the facilitator sent
+	LastBlock uint64                  `json:"lastBlock"` // highest block indexed (backfill resumes here)
+	Assets    map[string]*assetTotals `json:"assets"`    // token address -> totals
+}
+
 type statsStore struct {
 	mu       sync.Mutex
 	path     string
-	Networks map[string]map[string]*assetTotals `json:"networks"` // network -> asset address -> totals
+	Networks map[string]*networkTotals `json:"networks"`
+	Seen     map[string]bool           `json:"seen"` // tx hash -> indexed (dedupes live hook vs backfill)
+}
+
+type assetDelta struct {
+	symbol   string
+	decimals int
+	amount   *big.Int
 }
 
 func loadStats(path string) *statsStore {
-	s := &statsStore{path: path, Networks: map[string]map[string]*assetTotals{}}
+	s := &statsStore{path: path}
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, s); err != nil {
 			fmt.Printf("[stats] %s corrupt (%v), starting fresh\n", path, err)
 		}
 	}
+	if s.Networks == nil {
+		s.Networks = map[string]*networkTotals{}
+	}
+	if s.Seen == nil {
+		s.Seen = map[string]bool{}
+	}
 	return s
 }
 
-// record adds one successful onchain settlement. Zero-amount records still
-// bump the tx count.
-func (s *statsStore) record(network, asset, symbol string, decimals int, amount *big.Int) {
+func (s *statsStore) seen(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Seen[strings.ToLower(hash)]
+}
+
+func (s *statsStore) lastBlock(network string) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n := s.Networks[network]; n != nil {
+		return n.LastBlock
+	}
+	return 0
+}
+
+// recordTx adds one indexed tx. Idempotent per hash. Does not save — callers
+// batch saves (backfill) or save right after (live hook).
+func (s *statsStore) recordTx(network, hash string, block uint64, assets map[string]assetDelta) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	byAsset := s.Networks[network]
-	if byAsset == nil {
-		byAsset = map[string]*assetTotals{}
-		s.Networks[network] = byAsset
+	hash = strings.ToLower(hash)
+	if s.Seen[hash] {
+		return
 	}
-	key := strings.ToLower(asset)
-	t := byAsset[key]
-	if t == nil {
-		t = &assetTotals{Symbol: symbol, Decimals: decimals, TotalAmount: "0"}
-		byAsset[key] = t
-	}
-	t.TxCount++
-	total, _ := new(big.Int).SetString(t.TotalAmount, 10)
-	if total == nil {
-		total = big.NewInt(0)
-	}
-	t.TotalAmount = total.Add(total, amount).String()
+	s.Seen[hash] = true
 
-	// Persist inline: settles are onchain-tx-rate, i.e. rare.
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err == nil {
-		if data, err := json.MarshalIndent(s, "", "  "); err == nil {
-			if err := os.WriteFile(s.path, data, 0o644); err != nil {
-				fmt.Printf("[stats] write %s: %v\n", s.path, err)
-			}
+	n := s.Networks[network]
+	if n == nil {
+		n = &networkTotals{Assets: map[string]*assetTotals{}}
+		s.Networks[network] = n
+	}
+	n.TxCount++
+	if block > n.LastBlock {
+		n.LastBlock = block
+	}
+	for token, d := range assets {
+		key := strings.ToLower(token)
+		t := n.Assets[key]
+		if t == nil {
+			t = &assetTotals{Symbol: d.symbol, Decimals: d.decimals, TotalAmount: "0"}
+			n.Assets[key] = t
 		}
-	} else {
-		fmt.Printf("[stats] mkdir for %s: %v\n", s.path, err)
+		t.TxCount++
+		total, ok := new(big.Int).SetString(t.TotalAmount, 10)
+		if !ok {
+			total = new(big.Int)
+		}
+		t.TotalAmount = total.Add(total, d.amount).String()
 	}
 }
 
-func (s *statsStore) snapshot() map[string]map[string]*assetTotals {
+func (s *statsStore) save() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make(map[string]map[string]*assetTotals, len(s.Networks))
-	for n, byAsset := range s.Networks {
-		cp := make(map[string]*assetTotals, len(byAsset))
-		for a, t := range byAsset {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+		fmt.Printf("[stats] mkdir for %s: %v\n", s.path, err)
+		return
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(s.path, data, 0o644); err != nil {
+		fmt.Printf("[stats] write %s: %v\n", s.path, err)
+	}
+}
+
+// snapshot returns a deep copy of the network totals (without the seen-set).
+func (s *statsStore) snapshot() map[string]*networkTotals {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]*networkTotals, len(s.Networks))
+	for name, n := range s.Networks {
+		cp := &networkTotals{TxCount: n.TxCount, LastBlock: n.LastBlock, Assets: make(map[string]*assetTotals, len(n.Assets))}
+		for a, t := range n.Assets {
 			c := *t
-			cp[a] = &c
+			cp.Assets[a] = &c
 		}
-		out[n] = cp
+		out[name] = cp
 	}
 	return out
 }

@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -121,24 +120,32 @@ func main() {
 	facilitator.OnAfterSettle(func(ctx x402.FacilitatorSettleResultContext) error {
 		fmt.Printf("[settle] tx=%s\n", ctx.Result.Transaction)
 		// Index onchain settlements only: batch-settlement vouchers settle with
-		// an empty tx (pure off-chain accounting) and would skew tx counts.
+		// an empty tx (pure off-chain accounting). Amounts come from the receipt
+		// so the live feed and the explorer backfill share one definition.
 		if !ctx.Result.Success || ctx.Result.Transaction == "" {
 			return nil
 		}
-		network := string(ctx.Result.Network)
-		asset := ctx.Requirements.GetAsset()
-		// Result.Amount is the actually-settled amount (deposit value, upto
-		// actual charge); fall back to the required amount when absent.
-		amount, ok := new(big.Int).SetString(ctx.Result.Amount, 10)
-		if !ok {
-			if amount, ok = new(big.Int).SetString(ctx.Requirements.GetAmount(), 10); !ok {
-				amount = big.NewInt(0)
-			}
+		signer := signers[ctx.Result.Network]
+		if signer == nil {
+			return nil
 		}
-		meta := tokenMetas.resolve(ctx.Ctx, signers[ctx.Result.Network], network, asset)
-		stats.record(network, asset, meta.Symbol, meta.Decimals, amount)
+		if err := indexTx(ctx.Ctx, stats, tokenMetas, signer, ctx.Result.Network, ctx.Result.Transaction, 0); err != nil {
+			fmt.Printf("[index] live: %v\n", err)
+			return nil
+		}
+		stats.save()
 		return nil
 	})
+
+	// Backfill history from the chain (facilitator address = tx sender) and
+	// keep polling so nothing the live hook misses stays missing.
+	backfillInterval := 10 * time.Minute
+	if v, err := time.ParseDuration(os.Getenv("BACKFILL_INTERVAL")); err == nil && v > 0 {
+		backfillInterval = v
+	}
+	if facAddr, err := addressFromPrivateKey(evmPrivateKey); err == nil {
+		runIndexer(stats, tokenMetas, chains, signers, facAddr, backfillInterval)
+	}
 
 	mux := http.NewServeMux()
 
