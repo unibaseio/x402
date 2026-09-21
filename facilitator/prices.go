@@ -23,8 +23,25 @@ import (
 
 type usdQuote struct {
 	Price   *big.Rat
-	At      time.Time // CMC last_updated
+	At      time.Time // CMC last_updated; zero for a peg (policy, not observation)
+	Source  string    // "coinmarketcap" | "peg"
 	expires time.Time
+}
+
+// pegQuotes parses PRICE_PEG_USD — comma-separated token addresses valued at
+// exactly $1.00 — into quotes that win over CoinMarketCap. For USD-pegged
+// tokens CMC does not list: XUSD ("Wrapped USDC") carries 99% of the BSC
+// settlement history and was reported unpriced, so totalUsd understated the
+// chain by ~$14. Anything not shaped like an address is ignored.
+func pegQuotes(spec string) map[string]usdQuote {
+	out := map[string]usdQuote{}
+	for _, a := range strings.Split(spec, ",") {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if strings.HasPrefix(a, "0x") && len(a) == 42 {
+			out[a] = usdQuote{Price: big.NewRat(1, 1), Source: "peg"}
+		}
+	}
+	return out
 }
 
 type cmcPricer struct {
@@ -176,7 +193,7 @@ func (p *cmcPricer) Quotes(ctx context.Context, addrs []string) map[string]usdQu
 			continue
 		}
 		price, _ := new(big.Rat).SetString(strconv.FormatFloat(v.Quote.USD.Price, 'f', -1, 64))
-		q := usdQuote{Price: price, At: v.Quote.USD.LastUpdated, expires: now.Add(p.ttl)}
+		q := usdQuote{Price: price, At: v.Quote.USD.LastUpdated, Source: "coinmarketcap", expires: now.Add(p.ttl)}
 		p.mu.Lock()
 		p.quotes[addr] = q
 		p.mu.Unlock()
