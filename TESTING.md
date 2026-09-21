@@ -186,6 +186,14 @@ NETWORK=eip155:97 ASSET=0xTOKEN ASSET_NAME=TestUSD PRICE_UNITS=2500 \
 curl -s http://localhost:4022/stats     # one bucket per network × asset
 ```
 
+`/stats` also **backfills history** from the chain — every settlement is a tx sent by the
+facilitator address, so an explorer `txlist` is the complete record. Set `EXPLORER_API_KEY`
+(Etherscan V2, all chains) or a keyless per-chain override such as
+`EXPLORER_URL_BASE_SEPOLIA=https://base-sepolia.blockscout.com/api`; the log prints
+`[index] <chain> backfill done: N new txs`. Amount rule: per tx, sum of ERC-20 `Transfer`
+values minus pass-through hops (batch-settlement deposits move one amount through
+payer → collector → escrow and count once). Txs without a `Transfer` (claims) still count.
+
 For a no-faucet dry run, fork the chain locally first:
 `anvil --fork-url <rpc> --port 8597 --chain-id 97`, `cast rpc anvil_setBalance <facilitator> 0x8AC7230489E80000`,
 and start the facilitator with `RPC_URL_BSC_TESTNET=http://localhost:8597`.
