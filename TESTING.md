@@ -168,6 +168,28 @@ PAYER_KEY=0x<subscriber-key> RECEIVER=0x<receiver-address> \
 Success looks like `... 200 OK` plus a `settle: {"success":true, "transaction":"0x..."}`
 line, and the matching `[verify] ok` / `[settle] tx=...` in the facilitator log.
 
+### Other chains / `GET /stats` across networks
+
+Chains without a native USDC (e.g. BSC testnet) have no SDK default asset. Deploy the
+EIP-3009 test token in `tools/test-token` (needs the facilitator wallet funded with gas
+on that chain), mint to the payer, and point `e2e/exact` at it:
+
+```bash
+cd tools/test-token
+forge create src/TestToken3009.sol:TestToken3009 --rpc-url <rpc> --private-key <facilitator-key> \
+  --broadcast --constructor-args "TestUSD" "tUSD"          # → Deployed to: 0xTOKEN
+cast send 0xTOKEN "mint(address,uint256)" <payer> 100000000 --rpc-url <rpc> --private-key <facilitator-key>
+
+cd ../../e2e/exact
+NETWORK=eip155:97 ASSET=0xTOKEN ASSET_NAME=TestUSD PRICE_UNITS=2500 \
+  PAYER_KEY=... RECEIVER=... FACILITATOR_URL=http://localhost:4022 go run .
+curl -s http://localhost:4022/stats     # one bucket per network × asset
+```
+
+For a no-faucet dry run, fork the chain locally first:
+`anvil --fork-url <rpc> --port 8597 --chain-id 97`, `cast rpc anvil_setBalance <facilitator> 0x8AC7230489E80000`,
+and start the facilitator with `RPC_URL_BSC_TESTNET=http://localhost:8597`.
+
 ## Fully offline (no testnet) — advanced
 
 To avoid the testnet entirely, run a local Anvil chain and deploy the batch-settlement contract

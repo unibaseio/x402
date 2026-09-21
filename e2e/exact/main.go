@@ -20,7 +20,30 @@ import (
 	evmsigners "github.com/x402-foundation/x402/go/v2/signers/evm"
 )
 
-const network = x402.Network("eip155:84532")
+// NETWORK selects the chain (default Base Sepolia). On chains where the SDK
+// has no default asset, set ASSET (+ ASSET_NAME / ASSET_VERSION for the
+// EIP-712 domain) and the price is PRICE_UNITS base units of that token.
+var network = x402.Network(envOr("NETWORK", "eip155:84532"))
+
+func envOr(k, d string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return d
+}
+
+func price() x402.Price {
+	asset := os.Getenv("ASSET")
+	if asset == "" {
+		return "$0.001"
+	}
+	// The exact server scheme accepts explicit assets as a map, not AssetAmount.
+	return map[string]interface{}{
+		"asset":  asset,
+		"amount": envOr("PRICE_UNITS", "1000"),
+		"extra":  map[string]interface{}{"name": envOr("ASSET_NAME", "TestUSD"), "version": envOr("ASSET_VERSION", "1")},
+	}
+}
 
 func main() {
 	payerKey := os.Getenv("PAYER_KEY")
@@ -32,7 +55,7 @@ func main() {
 	routes := x402http.RoutesConfig{
 		"GET /ping": {
 			Accepts: x402http.PaymentOptions{
-				{Scheme: "exact", Price: "$0.001", Network: network, PayTo: receiver},
+				{Scheme: "exact", Price: price(), Network: network, PayTo: receiver},
 			},
 		},
 	}
