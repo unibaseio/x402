@@ -117,6 +117,16 @@ func main() {
 	})
 	stats := loadStats(envOr("STATS_FILE", "data/stats.json"))
 	tokenMetas := newTokenMetaCache()
+	// Optional USD pricing for /stats. Without a key no USD field is emitted.
+	var pricer *cmcPricer
+	if key := os.Getenv("CMC_API_KEY"); key != "" {
+		ttl := 10 * time.Minute
+		if v, err := time.ParseDuration(os.Getenv("PRICE_TTL")); err == nil && v > 0 {
+			ttl = v
+		}
+		pricer = newCMCPricer(key, ttl)
+		fmt.Println("Prices: CoinMarketCap (USD totals in /stats)")
+	}
 	facilitator.OnAfterSettle(func(ctx x402.FacilitatorSettleResultContext) error {
 		fmt.Printf("[settle] tx=%s\n", ctx.Result.Transaction)
 		// Index onchain settlements only: batch-settlement vouchers settle with
@@ -157,10 +167,29 @@ func main() {
 
 	// GET /stats — per network × asset settlement index (onchain tx count and
 	// total settled amount in base units) plus a per-network rollup in
-	// `summary` (tx count, amount in token units, asset count).
+	// `summary`. With CMC_API_KEY set, assets carry priceUsd/valueUsd and the
+	// summary a totalUsd over priced assets. CORS is open: it is public,
+	// read-only data that dashboards fetch straight from the browser.
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		snap := stats.snapshot()
-		writeJSON(w, http.StatusOK, map[string]any{"networks": snap, "summary": summarize(snap)})
+		var quotes map[string]usdQuote
+		if pricer != nil {
+			var addrs []string
+			for _, n := range snap {
+				for a := range n.Assets {
+					addrs = append(addrs, a)
+				}
+			}
+			quotes = pricer.Quotes(r.Context(), addrs)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"networks": snap, "summary": summarize(snap, quotes)})
+	})
+	mux.HandleFunc("OPTIONS /stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// GET /supported — advertises the schemes, networks, and (optionally) the
