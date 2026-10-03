@@ -54,15 +54,12 @@ var builtinChains = []chainConfig{
 		Name: "bsc", ChainID: 56,
 		DefaultRPCs: []string{"https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"},
 	},
-	{
-		Name: "polygon", ChainID: 137,
-		DefaultRPCs: []string{"https://polygon-bor-rpc.publicnode.com", "https://polygon-rpc.com"},
-	},
-	{
-		Name: "arbitrum", ChainID: 42161,
-		DefaultRPCs: []string{"https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com"},
-	},
 }
+
+// Polygon (137) and Arbitrum (42161) were built in during the multi-chain bring-up and
+// removed on 2026-10-04: Unibase Pay settles on BNB Smart Chain and Base. Neither ever
+// settled a payment. Re-adding one is an entry above and nothing else — the escrow is
+// CREATE2-deployed at the same address on every chain.
 
 // selectChains resolves the NETWORKS env var (comma-separated names, or "all"
 // / "testnets" / "mainnets") against the built-in registry. Empty defaults to

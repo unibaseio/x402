@@ -10,8 +10,7 @@ services:
       # or names like "base-sepolia,bsc-testnet".
       NETWORKS: ${NETWORKS:-all}
       # Optional per-chain RPC overrides (built-in public defaults otherwise):
-      # RPC_URL_BASE_SEPOLIA, RPC_URL_BASE, RPC_URL_BSC_TESTNET, RPC_URL_BSC,
-      # RPC_URL_POLYGON, RPC_URL_ARBITRUM
+      # RPC_URL_BASE_SEPOLIA, RPC_URL_BASE, RPC_URL_BSC_TESTNET, RPC_URL_BSC
       EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY: ${EVM_RECEIVER_AUTHORIZER_PRIVATE_KEY:-}
       # Etherscan V2 key: enables /stats history backfill on every chain.
       EXPLORER_API_KEY: ${EXPLORER_API_KEY:-}
