@@ -105,7 +105,7 @@ Or with Docker (from the repo root):
 EVM_PRIVATE_KEY=0x... docker compose up -d facilitator
 ```
 
-Multi-chain is **built in** — Base Sepolia, Base, BSC testnet, BSC, Polygon and Arbitrum all
+Multi-chain is **built in** — Base Sepolia, Base, BSC testnet and BSC all
 work with zero RPC configuration (the batch-settlement escrow is CREATE2-deployed at the same
 address on every chain). Select a subset with `NETWORKS=testnets|mainnets|base-sepolia,bsc`,
 override an endpoint with `RPC_URL_<NAME>` (e.g. `RPC_URL_BSC=...`).

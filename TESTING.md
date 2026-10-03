@@ -50,8 +50,6 @@ Networks:
   ✓ base          eip155:8453 (https://mainnet.base.org)
   ✓ bsc-testnet   eip155:97   (https://data-seed-prebsc-1-s1.bnbchain.org:8545)
   ✓ bsc           eip155:56   (https://bsc-dataseed.bnbchain.org)
-  ✓ polygon       eip155:137  (...)
-  ✓ arbitrum      eip155:42161 (...)
 Facilitator listening on http://localhost:4022
 ```
 
