@@ -54,6 +54,14 @@ var builtinChains = []chainConfig{
 		Name: "bsc", ChainID: 56,
 		DefaultRPCs: []string{"https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"},
 	},
+	{
+		Name: "sepolia", ChainID: 11155111, Testnet: true,
+		DefaultRPCs: []string{"https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.drpc.org"},
+	},
+	{
+		Name: "ethereum", ChainID: 1,
+		DefaultRPCs: []string{"https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"},
+	},
 }
 
 // Polygon (137) and Arbitrum (42161) were built in during the multi-chain bring-up and
